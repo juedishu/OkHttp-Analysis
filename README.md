@@ -1,11 +1,10 @@
 ## 基本使用
 从使用方法出发，首先是怎么使用，其次是我们使用的功能在内部是如何实现的.建议大家下载 OkHttp 源码之后，跟着本文，过一遍源码。
 通过小栗子开启今天的源码分析：
+
     OkHttpClient client = new OkHttpClient();
     String run(String url) throws IOException {
-    Request request = new Request.Builder()
-.url(url)
-.build();   
+    Request request = new Request.Builder().url(url).build();   
     Response response = client.newCall(request).execute();
     return response.body().string();
     }
@@ -22,116 +21,104 @@ OkHttp使用Call抽象出一个满足请求的模型，尽管中间可能会有�
 OkHttpClient client = new OkHttpClient();`
 
 通过okhttp源码分析,直接创建的 OkHttpClient对象并且默认构造builder对象进行初始化
-`
-public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory {
-public OkHttpClient() {
-this(new Builder());
-}
-OkHttpClient(Builder builder) {
-this.dispatcher = builder.dispatcher;
-this.proxy = builder.proxy;
-this.protocols = builder.protocols;
-this.connectionSpecs = builder.connectionSpecs;
-this.interceptors = Util.immutableList(builder.interceptors);
-this.networkInterceptors = Util.immutableList(builder.networkInterceptors);
-this.eventListenerFactory = builder.eventListenerFactory;
-this.proxySelector = builder.proxySelector;
-this.cookieJar = builder.cookieJar;
-this.cache = builder.cache;
-this.internalCache = builder.internalCache;
-this.socketFactory = builder.socketFactory;
 
-boolean isTLS = false;
-......
+    public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory {
+    public OkHttpClient() {
+    this(new Builder());
+    }
+    OkHttpClient(Builder builder) {
+    this.dispatcher = builder.dispatcher;
+    this.proxy = builder.proxy;
+    this.protocols = builder.protocols;
+    this.connectionSpecs = builder.connectionSpecs;
+    this.interceptors = Util.immutableList(builder.interceptors);
+    this.networkInterceptors = Util.immutableList(builder.networkInterceptors);
+    this.eventListenerFactory = builder.eventListenerFactory;
+    this.proxySelector = builder.proxySelector;
+    this.cookieJar = builder.cookieJar;
+    this.cache = builder.cache;
+    this.internalCache = builder.internalCache;
+    this.socketFactory = builder.socketFactory;
+    boolean isTLS = false;
+    ......
+    this.hostnameVerifier = builder.hostnameVerifier;
+    this.certificatePinner = builder.certificatePinner.withCertificateChainCleaner(
+    certificateChainCleaner);
+    this.proxyAuthenticator = builder.proxyAuthenticator;
+    this.authenticator = builder.authenticator;
+    this.connectionPool = builder.connectionPool;
+    this.dns = builder.dns;
+    this.followSslRedirects = builder.followSslRedirects;
+    this.followRedirects = builder.followRedirects;
+    this.retryOnConnectionFailure = builder.retryOnConnectionFailure;
+    this.connectTimeout = builder.connectTimeout;
+    this.readTimeout = builder.readTimeout;
+    this.writeTimeout = builder.writeTimeout;
+    this.pingInterval = builder.pingInterval;
+    }
+    }
 
-this.hostnameVerifier = builder.hostnameVerifier;
-this.certificatePinner = builder.certificatePinner.withCertificateChainCleaner(
-certificateChainCleaner);
-this.proxyAuthenticator = builder.proxyAuthenticator;
-this.authenticator = builder.authenticator;
-this.connectionPool = builder.connectionPool;
-this.dns = builder.dns;
-this.followSslRedirects = builder.followSslRedirects;
-this.followRedirects = builder.followRedirects;
-this.retryOnConnectionFailure = builder.retryOnConnectionFailure;
-this.connectTimeout = builder.connectTimeout;
-this.readTimeout = builder.readTimeout;
-this.writeTimeout = builder.writeTimeout;
-this.pingInterval = builder.pingInterval;
-}
-}
-`
 第二步：接下来发起 HTTP 请求
-`
-Request request = new Request.Builder().url("url").build();
-okHttpClient.newCall(request).enqueue(new Callback() {
-@Override
-public void onFailure(Call call, IOException e) {
 
-}
+    Request request = new Request.Builder().url("url").build();
+    okHttpClient.newCall(request).enqueue(new Callback() {
+    @Override
+    public void onFailure(Call call, IOException e) {
+    }
+    @Override
+    public void onResponse(Call call, Response response) throws IOException {
+    }
+    });
 
-@Override
-public void onResponse(Call call, Response response) throws IOException {
-
-}
-});
-`
 第二步：代码流程分析：
-Request request = new Request.Builder().url("url").build();
+
+    Request request = new Request.Builder().url("url").build();
 
 初始化构建者模式和请求对象，并且用URL替换Web套接字URL。
-`
-public final class Request {
-public Builder() {
-this.method = "GET";
-this.headers = new Headers.Builder();
-}
-public Builder url(String url) {
-......
 
-// Silently replace web socket URLs with HTTP URLs.
-if (url.regionMatches(true, 0, "ws:", 0, 3)) {
-url = "http:" + url.substring(3);
-} else if (url.regionMatches(true, 0, "wss:", 0, 4)) {
-url = "https:" + url.substring(4);
-}
+    public final class Request {
+    public Builder() {
+    this.method = "GET";
+    this.headers = new Headers.Builder();
+    }
+    public Builder url(String url) {
+    ......
+    // Silently replace web socket URLs with HTTP URLs.
+    if (url.regionMatches(true, 0, "ws:", 0, 3)) {
+    url = "http:" + url.substring(3);
+    } else if (url.regionMatches(true, 0, "wss:", 0, 4)) {
+    url = "https:" + url.substring(4);
+    }
+    HttpUrl parsed = HttpUrl.parse(url);
+    ......
+    return url(parsed);
+    }
+    public Request build() {
+    ......
+    return new Request(this);
+    }
+    }
 
-HttpUrl parsed = HttpUrl.parse(url);
-......
-return url(parsed);
-}
-public Request build() {
-......
-return new Request(this);
-}
-}
-`
 第三步：方法解析：
-`
-okHttpClient.newCall(request).enqueue(new Callback() {
-@Override
-public void onFailure(Call call, IOException e) {
 
-}
+    okHttpClient.newCall(request).enqueue(new Callback() {
+    @Override
+    public void onFailure(Call call, IOException e) {
+    }
+    @Override
+    public void onResponse(Call call, Response response) throws IOException {
+    }
+    });
 
-@Override
-public void onResponse(Call call, Response response) throws IOException {
-
-}
-});
-`
 源码分析：
-`
-public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory {
-@Override 
-public Call newCall(Request request) {
-return new RealCall(this, request, false /* for web socket */);
-}
 
+    public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory {
+    @Override 
+    public Call newCall(Request request) {
+    return new RealCall(this, request, false /* for web socket */);
+    }
+    }
 
-
-}
-`
 RealCall实现了Call.Factory接口创建了一个RealCall的实例，而RealCall是Call接口的实现。
 异步请求的执行流程
 `
@@ -151,102 +138,102 @@ client.dispatcher().enqueue(new AsyncCall(responseCallback));
 1） 检查这个 call 是否已经被执行了，每个 call 只能被执行一次，如果想要一个完全一样的 call，可以利用 call#clone 方法进行克隆。
 2）利用 client.dispatcher().enqueue(this) 来进行实际执行，dispatcher 是刚才看到的 OkHttpClient.Builder 的成员之一
 3）AsyncCall是RealCall的一个内部类并且继承NamedRunnable，那么首先看NamedRunnable类是什么样的，如下：
-`
-public abstract class NamedRunnable implements Runnable {
-......
 
-@Override 
-public final void run() {
-......
-try {
-execute();
-}
-......
-}
+    public abstract class NamedRunnable implements Runnable {
+    ......
 
-protected abstract void execute();
-}
-`
+    @Override 
+    public final void run() {
+    ......
+    try {
+    execute();
+    }
+    ......
+    }
+    protected abstract void execute();
+    }
+
 可以看到NamedRunnable实现了Runnbale接口并且是个抽象类，其抽象方法是execute()，该方法是在run方法中被调用的，这也就意味着NamedRunnable是一个任务，并且其子类应该实现execute方法。下面再看AsyncCall的实现：
-`
-final class AsyncCall extends NamedRunnable {
-private final Callback responseCallback;
 
-AsyncCall(Callback responseCallback) {
-super("OkHttp %s", redactedUrl());
-this.responseCallback = responseCallback;
-}
+    final class AsyncCall extends NamedRunnable {
+    private final Callback responseCallback;
 
-......
-final class RealCall implements Call {
-@Override protected void execute() {
-boolean signalledCallback = false;
-try {
-Response response = getResponseWithInterceptorChain();
-if (retryAndFollowUpInterceptor.isCanceled()) {
-signalledCallback = true;
-responseCallback.onFailure(RealCall.this, new IOException("Canceled"));
-} else {
-signalledCallback = true;
-responseCallback.onResponse(RealCall.this, response);
-}
-} catch (IOException e) {
-......
-responseCallback.onFailure(RealCall.this, e);
+    AsyncCall(Callback responseCallback) {
+    super("OkHttp %s", redactedUrl());
+    this.responseCallback = responseCallback;
+    }
+    ......
+    final class RealCall implements Call {
+    @Override protected void execute() {
+    boolean signalledCallback = false;
+    try {
+    Response response = getResponseWithInterceptorChain();
+    if (retryAndFollowUpInterceptor.isCanceled()) {
+    signalledCallback = true;
+    responseCallback.onFailure(RealCall.this, new IOException("Canceled"));
+    } else {
+    signalledCallback = true;
+    responseCallback.onResponse(RealCall.this, response);
+    }
+    } catch (IOException e) {
+    ......
+    responseCallback.onFailure(RealCall.this, e);
 
-} finally {
-client.dispatcher().finished(this);
-}
-}
-`
+    } finally {
+    client.dispatcher().finished(this);
+    }
+    }
+
 AsyncCall实现了execute方法，首先是调用getResponseWithInterceptorChain()方法获取响应，然后获取成功后，就调用回调的onReponse方法，如果失败，就调用回调的onFailure方法。最后，调用Dispatcher的finished方法。
 关键代码：
 responseCallback.onFailure(RealCall.this, new IOException("Canceled"));
 和
 responseCallback.onResponse(RealCall.this, response);
 走完这两句代码会进行回调到刚刚我们初始化Okhttp的地方,如下：
-`
-okHttpClient.newCall(request).enqueue(new Callback() {
-@Override
-public void onFailure(Call call, IOException e) {
 
-}
+    okHttpClient.newCall(request).enqueue(new Callback() {
+    @Override
+    public void onFailure(Call call, IOException e) {
+    
+    }
 
-@Override
-public void onResponse(Call call, Response response) throws IOException {
+    @Override
+    public void onResponse(Call call, Response response) throws IOException {
+    
+    }
+    });
 
-}
-});
-`
 核心重点类Dispatcher线程池介绍
-public final class Dispatcher {
-/** 最大并发请求数为64 */
-private int maxRequests = 64;
-/** 每个主机最大请求数为5 */
-private int maxRequestsPerHost = 5;
 
-/** 线程池 */
-private ExecutorService executorService;
+    public final class Dispatcher {
+    /** 最大并发请求数为64 */
+    private int maxRequests = 64;
+    /** 每个主机最大请求数为5 */
+    private int maxRequestsPerHost = 5;
+    /** 线程池 */
+    private ExecutorService executorService;
 
-/** 准备执行的请求 */
-private final Deque<AsyncCall> readyAsyncCalls = new ArrayDeque<>();
+    /** 准备执行的请求 */
+    private final Deque<AsyncCall> readyAsyncCalls = new ArrayDeque<>();
 
-/** 正在执行的异步请求，包含已经取消但未执行完的请求 */
-private final Deque<AsyncCall> runningAsyncCalls = new ArrayDeque<>();
-
-/** 正在执行的同步请求，包含已经取消单未执行完的请求 */
-private final Deque<RealCall> runningSyncCalls = new ArrayDeque<>();
+    /** 正在执行的异步请求，包含已经取消但未执行完的请求 */
+    private final Deque<AsyncCall> runningAsyncCalls = new ArrayDeque<>();
+    
+    /** 正在执行的同步请求，包含已经取消单未执行完的请求 */
+    private final Deque<RealCall> runningSyncCalls = new ArrayDeque<>();
 
 在OkHttp，使用如下构造了单例线程池
+`
 public synchronized ExecutorService executorService() {
 if (executorService == null) {
 executorService = new ThreadPoolExecutor(0, Integer.MAX_VALUE, 60, TimeUnit.SECONDS,
 new SynchronousQueue<Runnable>(), Util.threadFactory("OkHttp Dispatcher", false));
 }
 return executorService;
-}
+}`
 
 构造一个线程池ExecutorService：
+`
 executorService = new ThreadPoolExecutor(
 //corePoolSize 最小并发线程数,如果是0的话，空闲一段时间后所有线程将全部被销毁
 0, 
@@ -260,9 +247,10 @@ TimeUnit.SECONDS,
 new SynchronousQueue<Runnable>(),   
 //单个线程的工厂         
 Util.threadFactory("OkHttp Dispatcher", false));
-
+`
 可以看出，在Okhttp中，构建了一个核心为[0, Integer.MAX_VALUE]的线程池，它不保留任何最小线程数，随时创建更多的线程数，当线程空闲时只能活60秒，它使用了一个不存储元素的阻塞工作队列，一个叫做"OkHttp Dispatcher"的线程工厂。
 也就是说，在实际运行中，当收到10个并发请求时，线程池会创建十个线程，当工作完成后，线程池会在60s后相继关闭所有线程。
+`
 synchronized void enqueue(AsyncCall call) {
 if (runningAsyncCalls.size() < maxRequests && runningCallsForHost(call) < maxRequestsPerHost) {
 runningAsyncCalls.add(call);
@@ -271,7 +259,7 @@ executorService().execute(call);
 readyAsyncCalls.add(call);
 }
 }
-
+`
 从上述源码分析，如果当前还能执行一个并发请求，则加入 runningAsyncCalls ，立即执行，否则加入 readyAsyncCalls 队列。
 Dispatcher线程池总结
 1）调度线程池Disptcher实现了高并发，低阻塞的实现
@@ -294,15 +282,16 @@ client.dispatcher().finished(this);
 }
 `
 当任务执行完成后，无论是否有异常，finally代码段总会被执行，也就是会调用Dispatcher的finished函数
-void finished(AsyncCall call) {
+
+`void finished(AsyncCall call) {
 finished(runningAsyncCalls, call, true);
-}
+}`
 
 
 
 从上面的代码可以看出，第一个参数传入的是正在运行的异步队列，第三个参数为true，下面再看有是三个参数的finished方法：
-`
-private <T> void finished(Deque<T> calls, T call, boolean promoteCalls) {
+
+`private <T> void finished(Deque<T> calls, T call, boolean promoteCalls) {
 int runningCallsCount;
 Runnable idleCallback;
 synchronized (this) {
@@ -311,31 +300,27 @@ if (promoteCalls) promoteCalls();
 runningCallsCount = runningCallsCount();
 idleCallback = this.idleCallback;
 }
-
 if (runningCallsCount == 0 && idleCallback != null) {
 idleCallback.run();
 }
-}
-`
-打开源码，发现它将正在运行的任务Call从队列runningAsyncCalls中移除后，获取运行数量判断是否进入了Idle状态,接着执行promoteCalls()函数,下面是promoteCalls()方法：
+}`
+
+打开源码，发现它将正在运行的任务Call从队列runningAsyncCalls中移除后，获取运行数量判断是否进入了Idle状态,接着执行promoteCalls()函数,下面是promoteCalls()方法:
 `
 private void promoteCalls() {
 if (runningAsyncCalls.size() >= maxRequests) return; // Already running max capacity.
 if (readyAsyncCalls.isEmpty()) return; // No ready calls to promote.
-
 for (Iterator<AsyncCall> i = readyAsyncCalls.iterator(); i.hasNext(); ) {
 AsyncCall call = i.next();
-
 if (runningCallsForHost(call) < maxRequestsPerHost) {
 i.remove();
 runningAsyncCalls.add(call);
 executorService().execute(call);
 }
-
 if (runningAsyncCalls.size() >= maxRequests) return; // Reached max capacity.
 }
-}
-`
+}`
+
 主要就是遍历等待队列，并且需要满足同一主机的请求小于maxRequestsPerHost时，就移到运行队列中并交给线程池运行。就主动的把缓存队列向前走了一步，而没有使用互斥锁等复杂编码
 核心重点getResponseWithInterceptorChain方法
 `
@@ -351,7 +336,6 @@ if (!forWebSocket) {
 interceptors.addAll(client.networkInterceptors());
 }
 interceptors.add(new CallServerInterceptor(forWebSocket));
-
 Interceptor.Chain chain = new RealInterceptorChain(
 interceptors, null, null, null, 0, originalRequest);
 return chain.proceed(originalRequest);
@@ -382,7 +366,6 @@ RealInterceptorChain类
 下面是RealInterceptorChain的定义，该类实现了Chain接口，在getResponseWithInterceptorChain调用时好几个参数都传的null。
 `
 public final class RealInterceptorChain implements Interceptor.Chain {
-
 public RealInterceptorChain(List<Interceptor> interceptors, StreamAllocation streamAllocation,
 HttpCodec httpCodec, RealConnection connection, int index, Request request) {
 this.interceptors = interceptors;
@@ -393,31 +376,23 @@ this.index = index;
 this.request = request;
 }
 ......
-
 @Override 
 public Response proceed(Request request) throws IOException {
 return proceed(request, streamAllocation, httpCodec, connection);
 }
-
 public Response proceed(Request request, StreamAllocation streamAllocation, HttpCodec httpCodec,
 RealConnection connection) throws IOException {
 if (index >= interceptors.size()) throw new AssertionError();
-
 calls++;
-
 ......
-
 // Call the next interceptor in the chain.
 RealInterceptorChain next = new RealInterceptorChain(
 interceptors, streamAllocation, httpCodec, connection, index + 1, request);
 Interceptor interceptor = interceptors.get(index);
 Response response = interceptor.intercept(next);
-
 ......
-
 return response;
 }
-
 protected abstract void execute();
 }
 `
@@ -426,12 +401,9 @@ Interceptor 代码如下：
 `
 public interface Interceptor {
 Response intercept(Chain chain) throws IOException;
-
 interface Chain {
 Request request();
-
 Response proceed(Request request) throws IOException;
-
 Connection connection();
 }
 }
@@ -441,12 +413,10 @@ BridgeInterceptor从用户的请求构建网络请求，然后提交给网络，
 `
 public final class BridgeInterceptor implements Interceptor {
 ......
-
 @Override 
 public Response intercept(Chain chain) throws IOException {
 Request userRequest = chain.request();
 Request.Builder requestBuilder = userRequest.newBuilder();
-
 RequestBody body = userRequest.body();
 //如果存在请求主体部分，那么需要添加Content-Type、Content-Length首部
 if (body != null) {
@@ -454,7 +424,6 @@ MediaType contentType = body.contentType();
 if (contentType != null) {
 requestBuilder.header("Content-Type", contentType.toString());
 }
-
 long contentLength = body.contentLength();
 if (contentLength != -1) {
 requestBuilder.header("Content-Length", Long.toString(contentLength));
@@ -464,15 +433,12 @@ requestBuilder.header("Transfer-Encoding", "chunked");
 requestBuilder.removeHeader("Content-Length");
 }
 }
-
 if (userRequest.header("Host") == null) {
 requestBuilder.header("Host", hostHeader(userRequest.url(), false));
 }
-
 if (userRequest.header("Connection") == null) {
 requestBuilder.header("Connection", "Keep-Alive");
 }
-
 // If we add an "Accept-Encoding: gzip" header field we're responsible for also decompressing
 // the transfer stream.
 boolean transparentGzip = false;
@@ -480,23 +446,17 @@ if (userRequest.header("Accept-Encoding") == null && userRequest.header("Range")
 transparentGzip = true;
 requestBuilder.header("Accept-Encoding", "gzip");
 }
-
 List<Cookie> cookies = cookieJar.loadForRequest(userRequest.url());
 if (!cookies.isEmpty()) {
 requestBuilder.header("Cookie", cookieHeader(cookies));
 }
-
 if (userRequest.header("User-Agent") == null) {
 requestBuilder.header("User-Agent", Version.userAgent());
 }
-
 Response networkResponse = chain.proceed(requestBuilder.build());
-
 HttpHeaders.receiveHeaders(cookieJar, userRequest.url(), networkResponse.headers());
-
 Response.Builder responseBuilder = networkResponse.newBuilder()
 .request(userRequest);
-
 if (transparentGzip
 && "gzip".equalsIgnoreCase(networkResponse.header("Content-Encoding"))
 && HttpHeaders.hasBody(networkResponse)) {
@@ -508,10 +468,8 @@ Headers strippedHeaders = networkResponse.headers().newBuilder()
 responseBuilder.headers(strippedHeaders);
 responseBuilder.body(new RealResponseBody(strippedHeaders, Okio.buffer(responseBody)));
 }
-
 return responseBuilder.build();
 }
-
 /** Returns a 'Cookie' HTTP request header with all cookies, like {@code a=b; c=d}. */
 private String cookieHeader(List<Cookie> cookies) {
 StringBuilder cookieHeader = new StringBuilder();
@@ -530,18 +488,15 @@ return cookieHeader.toString();
 `
 public final class ConnectInterceptor implements Interceptor {
 ......
-
 @Override 
 public Response intercept(Chain chain) throws IOException {
 RealInterceptorChain realChain = (RealInterceptorChain) chain;
 Request request = realChain.request();
 StreamAllocation streamAllocation = realChain.streamAllocation();
-
 // We need the network to satisfy this request. Possibly for validating a conditional GET.
 boolean doExtensiveHealthChecks = !request.method().equals("GET");
 HttpCodec httpCodec = streamAllocation.newStream(client, doExtensiveHealthChecks);
 RealConnection connection = streamAllocation.connection();
-
 return realChain.proceed(request, streamAllocation, httpCodec, connection);
 }
 }
@@ -557,10 +512,8 @@ HttpCodec httpCodec = realChain.httpStream();
 StreamAllocation streamAllocation = realChain.streamAllocation();
 RealConnection connection = (RealConnection) realChain.connection();
 Request request = realChain.request();
-
 long sentRequestMillis = System.currentTimeMillis();
 httpCodec.writeRequestHeaders(request);
-
 Response.Builder responseBuilder = null;
 if (HttpMethod.permitsRequestBody(request.method()) && request.body() != null) {
 // If there's a "Expect: 100-continue" header on the request, wait for a "HTTP/1.1 100
@@ -570,7 +523,6 @@ if ("100-continue".equalsIgnoreCase(request.header("Expect"))) {
 httpCodec.flushRequest();
 responseBuilder = httpCodec.readResponseHeaders(true);
 }
-
 if (responseBuilder == null) {
 // Write the request body if the "Expect: 100-continue" expectation was met.
 Sink requestBodyOut = httpCodec.createRequestBody(request, request.body().contentLength());
@@ -584,20 +536,16 @@ bufferedRequestBody.close();
 streamAllocation.noNewStreams();
 }
 }
-
 httpCodec.finishRequest();
-
 if (responseBuilder == null) {
 responseBuilder = httpCodec.readResponseHeaders(false);
 }
-
 Response response = responseBuilder
 .request(request)
 .handshake(streamAllocation.connection().handshake())
 .sentRequestAtMillis(sentRequestMillis)
 .receivedResponseAtMillis(System.currentTimeMillis())
 .build();
-
 int code = response.code();
 if (forWebSocket && code == 101) {
 // Connection is upgrading, but we need to ensure interceptors see a non-null response body.
@@ -609,17 +557,14 @@ response = response.newBuilder()
 .body(httpCodec.openResponseBody(response))
 .build();
 }
-
 if ("close".equalsIgnoreCase(response.request().header("Connection"))
 || "close".equalsIgnoreCase(response.header("Connection"))) {
 streamAllocation.noNewStreams();
 }
-
 if ((code == 204 || code == 205) && response.body().contentLength() > 0) {
 throw new ProtocolException(
 "HTTP " + code + " had non-zero Content-Length: " + response.body().contentLength());
 }
-
 return response;
 }
 `
