@@ -1,568 +1,280 @@
-## 基本使用
-从使用方法出发，首先是怎么使用，其次是我们使用的功能在内部是如何实现的.建议大家下载 OkHttp 源码之后，跟着本文，过一遍源码。
-通过小栗子开启今天的源码分析：
+## 简介
+butterknife来自于 著名的大神JakeWharton，github 上是这么描述它的功能和原理的。
 
-    OkHttpClient client = new OkHttpClient();
-    String run(String url) throws IOException {
-    Request request = new Request.Builder().url(url).build();   
-    Response response = client.newCall(request).execute();
-    return response.body().string();
-    }
+功能
 
-## Request、Response、Call 基本概念
-上面的代码中涉及到几个常用的类：Request、Response和Call。下面分别介绍：
-Request
-每一个HTTP请求包含一个URL、一个方法（GET或POST或其他）、一些HTTP头。请求还可能包含一个特定内容类型的数据类的主体部分。
-Response
-响应是对请求的回复，包含状态码、HTTP头和主体部分。
-Call
-OkHttp使用Call抽象出一个满足请求的模型，尽管中间可能会有多个请求或响应。执行Call有两种方式，同步或异步
-第一步：创建 OkHttpClient对象,进行源码分析：
-OkHttpClient client = new OkHttpClient();`
 
-通过okhttp源码分析,直接创建的 OkHttpClient对象并且默认构造builder对象进行初始化
+Bind Android views and callbacks to fields and methods.
 
-    public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory {
-    public OkHttpClient() {
-    this(new Builder());
-    }
-    OkHttpClient(Builder builder) {
-    this.dispatcher = builder.dispatcher;
-    this.proxy = builder.proxy;
-    this.protocols = builder.protocols;
-    this.connectionSpecs = builder.connectionSpecs;
-    this.interceptors = Util.immutableList(builder.interceptors);
-    this.networkInterceptors = Util.immutableList(builder.networkInterceptors);
-    this.eventListenerFactory = builder.eventListenerFactory;
-    this.proxySelector = builder.proxySelector;
-    this.cookieJar = builder.cookieJar;
-    this.cache = builder.cache;
-    this.internalCache = builder.internalCache;
-    this.socketFactory = builder.socketFactory;
-    boolean isTLS = false;
-    ......
-    this.hostnameVerifier = builder.hostnameVerifier;
-    this.certificatePinner = builder.certificatePinner.withCertificateChainCleaner(
-    certificateChainCleaner);
-    this.proxyAuthenticator = builder.proxyAuthenticator;
-    this.authenticator = builder.authenticator;
-    this.connectionPool = builder.connectionPool;
-    this.dns = builder.dns;
-    this.followSslRedirects = builder.followSslRedirects;
-    this.followRedirects = builder.followRedirects;
-    this.retryOnConnectionFailure = builder.retryOnConnectionFailure;
-    this.connectTimeout = builder.connectTimeout;
-    this.readTimeout = builder.readTimeout;
-    this.writeTimeout = builder.writeTimeout;
-    this.pingInterval = builder.pingInterval;
-    }
-    }
 
-第二步：接下来发起 HTTP 请求
+绑定android视图和事件回调到字段和方法。
 
-    Request request = new Request.Builder().url("url").build();
-    okHttpClient.newCall(request).enqueue(new Callback() {
+原理
+
+
+Field and method binding for Android views which uses annotation processing to generate boilerplate code for you.</br>
+通过使用注解处理并生成模板代码，为你绑定android视图中的字段和方法。
+源码解读
+工欲善其事，必先利其器。我们把butterknife 导入到insight.io中。
+
+这里我们来看常用的注解BindView
+@Retention(Class)表明@BindView采用的是编译时注解
+@Target(FIELD)则表明它应用于成员变量
+接下来我们写一个很简单的例子，后面将会用到此代码。
+
+    public class HelloActivity extends Activity {
+    @BindView(R.id.tv_hello)
+    TextView mHelloTv;
     @Override
-    public void onFailure(Call call, IOException e) {
-    }
-    @Override
-    public void onResponse(Call call, Response response) throws IOException {
-    }
-    });
-
-第二步：代码流程分析：
-
-    Request request = new Request.Builder().url("url").build();
-
-初始化构建者模式和请求对象，并且用URL替换Web套接字URL。
-
-    public final class Request {
-    public Builder() {
-    this.method = "GET";
-    this.headers = new Headers.Builder();
-    }
-    public Builder url(String url) {
-    ......
-    // Silently replace web socket URLs with HTTP URLs.
-    if (url.regionMatches(true, 0, "ws:", 0, 3)) {
-    url = "http:" + url.substring(3);
-    } else if (url.regionMatches(true, 0, "wss:", 0, 4)) {
-    url = "https:" + url.substring(4);
-    }
-    HttpUrl parsed = HttpUrl.parse(url);
-    ......
-    return url(parsed);
-    }
-    public Request build() {
-    ......
-    return new Request(this);
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    setContentView(R.layout.activity_hello);
+    ButterKnife.bind(this);
     }
     }
 
-第三步：方法解析：
+butterknife的原理主要分为三个部分来介绍，主要为：注解生成模板代码分析、butterknife.bind()方法分析、生成的模板类代码分析。
+注解生成模板代码分析
 
-    okHttpClient.newCall(request).enqueue(new Callback() {
-    @Override
-    public void onFailure(Call call, IOException e) {
-    }
-    @Override
-    public void onResponse(Call call, Response response) throws IOException {
-    }
-    });
+butterknife注册的注解器为ButterKnifeProcessor，源码在在butterknife-compiler工程下
 
-源码分析：
-
-    public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory {
-    @Override 
-    public Call newCall(Request request) {
-    return new RealCall(this, request, false /* for web socket */);
-    }
-    }
-
-RealCall实现了Call.Factory接口创建了一个RealCall的实例，而RealCall是Call接口的实现。
-异步请求的执行流程
-
-    final class RealCall implements Call {
-    @Override 
-    public void enqueue(Callback responseCallback) {
-    synchronized (this) {
-    if (executed) throw new IllegalStateException("Already Executed");
-    executed = true;
-    }
-    captureCallStackTrace();
-    client.dispatcher().enqueue(new AsyncCall(responseCallback));
-    }
-    }
-
-由以上源码得知：</br>
-1） 检查这个 call 是否已经被执行了，每个 call 只能被执行一次，如果想要一个完全一样的 call，可以利用 call#clone 方法进行克隆。</br>
-2）利用 client.dispatcher().enqueue(this) 来进行实际执行，dispatcher 是刚才看到的 OkHttpClient.Builder 的成员之一</br>
-3）AsyncCall是RealCall的一个内部类并且继承NamedRunnable，那么首先看NamedRunnable类是什么样的，如下：</br>
-
-    public abstract class NamedRunnable implements Runnable {
-    ......
-
-    @Override 
-    public final void run() {
-    ......
+    @AutoService(Processor.class)
+    public final class ButterKnifeProcessor extends AbstractProcessor {
+    ...
+    @Override public boolean process(Set<? extends TypeElement> elements, RoundEnvironment env) {
+    Map<TypeElement, BindingSet> bindingMap = findAndParseTargets(env);//1
+    for (Map.Entry<TypeElement, BindingSet> entry : bindingMap.entrySet()) {
+    TypeElement typeElement = entry.getKey();
+    BindingSet binding = entry.getValue();//8
+    JavaFile javaFile = binding.brewJava(sdk, debuggable);
     try {
-    execute();
-    }
-    ......
-    }
-    protected abstract void execute();
-    }
-
-可以看到NamedRunnable实现了Runnbale接口并且是个抽象类，其抽象方法是execute()，该方法是在run方法中被调用的，这也就意味着NamedRunnable是一个任务，并且其子类应该实现execute方法。下面再看AsyncCall的实现：
-
-    final class AsyncCall extends NamedRunnable {
-    private final Callback responseCallback;
-
-    AsyncCall(Callback responseCallback) {
-    super("OkHttp %s", redactedUrl());
-    this.responseCallback = responseCallback;
-    }
-    ......
-    final class RealCall implements Call {
-    @Override protected void execute() {
-    boolean signalledCallback = false;
-    try {
-    Response response = getResponseWithInterceptorChain();
-    if (retryAndFollowUpInterceptor.isCanceled()) {
-    signalledCallback = true;
-    responseCallback.onFailure(RealCall.this, new IOException("Canceled"));
-    } else {
-    signalledCallback = true;
-    responseCallback.onResponse(RealCall.this, response);
-    }
+    javaFile.writeTo(filer);
     } catch (IOException e) {
-    ......
-    responseCallback.onFailure(RealCall.this, e);
-
-    } finally {
-    client.dispatcher().finished(this);
+    error(typeElement, "Unable to write binding for type %s: %s", typeElement, e.getMessage());
     }
     }
-
-AsyncCall实现了execute方法，首先是调用getResponseWithInterceptorChain()方法获取响应，然后获取成功后，就调用回调的onReponse方法，如果失败，就调用回调的onFailure方法。最后，调用Dispatcher的finished方法。
-关键代码：
-responseCallback.onFailure(RealCall.this, new IOException("Canceled"));
-和
-responseCallback.onResponse(RealCall.this, response);
-走完这两句代码会进行回调到刚刚我们初始化Okhttp的地方,如下：
-
-    okHttpClient.newCall(request).enqueue(new Callback() {
-    @Override
-    public void onFailure(Call call, IOException e) {
-    
+    return false;
+    }
+    ...
     }
 
-    @Override
-    public void onResponse(Call call, Response response) throws IOException {
-    
-    }
-    });
+先来看注释1处调用的findAndParseTargets方法，顾名思义此方法为查找并解析目标注解，源码如下：
 
-核心重点类Dispatcher线程池介绍
-
-    public final class Dispatcher {
-    /** 最大并发请求数为64 */
-    private int maxRequests = 64;
-    /** 每个主机最大请求数为5 */
-    private int maxRequestsPerHost = 5;
-    /** 线程池 */
-    private ExecutorService executorService;
-
-    /** 准备执行的请求 */
-    private final Deque<AsyncCall> readyAsyncCalls = new ArrayDeque<>();
-
-    /** 正在执行的异步请求，包含已经取消但未执行完的请求 */
-    private final Deque<AsyncCall> runningAsyncCalls = new ArrayDeque<>();
-    
-    /** 正在执行的同步请求，包含已经取消单未执行完的请求 */
-    private final Deque<RealCall> runningSyncCalls = new ArrayDeque<>();
-
-在OkHttp，使用如下构造了单例线程池
-
-    public synchronized ExecutorService executorService() {
-    if (executorService == null) {
-    executorService = new ThreadPoolExecutor(0, Integer.MAX_VALUE, 60, TimeUnit.SECONDS,
-    new SynchronousQueue<Runnable>(), Util.threadFactory("OkHttp Dispatcher", false));
-    }
-    return executorService;
-    }
-
-构造一个线程池ExecutorService：
-
-    executorService = new ThreadPoolExecutor(
-    //corePoolSize 最小并发线程数,如果是0的话，空闲一段时间后所有线程将全部被销毁
-    0, 
-    //maximumPoolSize: 最大线程数，当任务进来时可以扩充的线程最大值，当大于了这个值就会根据丢弃处理机制来处理
-    Integer.MAX_VALUE, 
-    //keepAliveTime: 当线程数大于corePoolSize时，多余的空闲线程的最大存活时间
-    60, 
-    //单位秒
-    TimeUnit.SECONDS,
-    //工作队列,先进先出
-    new SynchronousQueue<Runnable>(),   
-    //单个线程的工厂         
-    Util.threadFactory("OkHttp Dispatcher", false));
-
-可以看出，在Okhttp中，构建了一个核心为[0, Integer.MAX_VALUE]的线程池，它不保留任何最小线程数，随时创建更多的线程数，当线程空闲时只能活60秒，它使用了一个不存储元素的阻塞工作队列，一个叫做"OkHttp Dispatcher"的线程工厂。
-也就是说，在实际运行中，当收到10个并发请求时，线程池会创建十个线程，当工作完成后，线程池会在60s后相继关闭所有线程。
-
-    synchronized void enqueue(AsyncCall call) {
-    if (runningAsyncCalls.size() < maxRequests && runningCallsForHost(call) < maxRequestsPerHost) {
-    runningAsyncCalls.add(call);
-    executorService().execute(call);
-    } else {
-    readyAsyncCalls.add(call);
-    }
-    }
-
-从上述源码分析，如果当前还能执行一个并发请求，则加入 runningAsyncCalls ，立即执行，否则加入 readyAsyncCalls 队列。
-Dispatcher线程池总结</br>
-1）调度线程池Disptcher实现了高并发，低阻塞的实现</br>
-2）采用Deque作为缓存，先进先出的顺序执行</br>
-3）任务在try/finally中调用了finished函数，控制任务队列的执行顺序，而不是采用锁，减少了编码复杂性提高性能</br>
-
+    private Map<TypeElement, BindingSet> findAndParseTargets(RoundEnvironment env) {
+    Map<TypeElement, BindingSet.Builder> builderMap = new LinkedHashMap<>();
+    Set<TypeElement> erasedTargetNames = new LinkedHashSet<>();
+    scanForRClasses(env);
+    ...
+    //Process each @BindView element.
+    for (Element element : env.getElementsAnnotatedWith(BindView.class)) {
+    // we don't SuperficialValidation.validateElement(element)
+    // so that an unresolved View type can be generated by later processing rounds
     try {
-    Response response = getResponseWithInterceptorChain();
-    if (retryAndFollowUpInterceptor.isCanceled()) {
-    signalledCallback = true;
-    responseCallback.onFailure(RealCall.this, new IOException("Canceled"));
-    } else {
-    signalledCallback = true;
-    responseCallback.onResponse(RealCall.this, response);
+    parseBindView(element, builderMap, erasedTargetNames); //2
+    } catch (Exception e) {
+    logParsingError(element, BindView.class, e);
     }
-    } finally {
-    client.dispatcher().finished(this);
+    }
+    ...
+    return bindingMap;
     }
 
-当任务执行完成后，无论是否有异常，finally代码段总会被执行，也就是会调用Dispatcher的finished函数
+接着查看注释2处parseBindView方法：
 
-    void finished(AsyncCall call) {
-    finished(runningAsyncCalls, call, true);
-    }
-
-
-
-从上面的代码可以看出，第一个参数传入的是正在运行的异步队列，第三个参数为true，下面再看有是三个参数的finished方法：
-
-    private <T> void finished(Deque<T> calls, T call, boolean promoteCalls) {
-    int runningCallsCount;
-    Runnable idleCallback;
-    synchronized (this) {
-    if (!calls.remove(call)) throw new AssertionError("Call wasn't in-flight!");
-    if (promoteCalls) promoteCalls();
-    runningCallsCount = runningCallsCount();
-    idleCallback = this.idleCallback;
-    }
-    if (runningCallsCount == 0 && idleCallback != null) {
-    idleCallback.run();
-    }
+    private void parseBindView(Element element, Map<TypeElement, BindingSet.Builder> builderMap,
+    Set<TypeElement> erasedTargetNames) {
+    TypeElement enclosingElement = (TypeElement) element.getEnclosingElement();
+    ... //非本文重点略掉。此处主要为一些限定性验证，（如元素修饰符不能为private,static、元素包含类型不能为非Class类型、包名不能为java. android.等）。
+    // Assemble information on the field.
+    String name = element.getSimpleName().toString();
+    int[] ids = element.getAnnotation(BindViews.class).value();
+    BindingSet.Builder builder = getOrCreateBindingBuilder(builderMap, enclosingElement);//3
+    builder.addFieldCollection(new FieldCollectionViewBinding(name, type, kind, idVars,   required));
     }
 
-打开源码，发现它将正在运行的任务Call从队列runningAsyncCalls中移除后，获取运行数量判断是否进入了Idle状态,接着执行promoteCalls()函数,下面是promoteCalls()方法:
+来看注释3处,如下：
 
-    private void promoteCalls() {
-    if (runningAsyncCalls.size() >= maxRequests) return; // Already running max capacity.
-    if (readyAsyncCalls.isEmpty()) return; // No ready calls to promote.
-    for (Iterator<AsyncCall> i = readyAsyncCalls.iterator(); i.hasNext(); ) {
-    AsyncCall call = i.next();
-    if (runningCallsForHost(call) < maxRequestsPerHost) {
-    i.remove();
-    runningAsyncCalls.add(call);
-    executorService().execute(call);
+    private BindingSet.Builder getOrCreateBindingBuilder(
+    Map<TypeElement, BindingSet.Builder> builderMap, TypeElement enclosingElement) {
+    BindingSet.Builder builder = builderMap.get(enclosingElement);
+    if (builder == null) {
+    builder = BindingSet.newBuilder(enclosingElement);//4
+    builderMap.put(enclosingElement, builder);
     }
-    if (runningAsyncCalls.size() >= maxRequests) return; // Reached max capacity.
-    }
+    return builder;
     }
 
-主要就是遍历等待队列，并且需要满足同一主机的请求小于maxRequestsPerHost时，就移到运行队列中并交给线程池运行。就主动的把缓存队列向前走了一步，而没有使用互斥锁等复杂编码
-核心重点getResponseWithInterceptorChain方法
+顾名思义获取或创建BindingBuilder,从builderMap中获取BindingSet.Builder如果有则return, 如果没有则创建并放入Map缓存中。那么BindingSet.Builder存储的是什么的？接下来我们看注释4处builder对象的创建，如下：
 
-    Response getResponseWithInterceptorChain() throws IOException {
-    // Build a full stack of interceptors.
-    List<Interceptor> interceptors = new ArrayList<>();
-    interceptors.addAll(client.interceptors());
-    interceptors.add(retryAndFollowUpInterceptor);
-    interceptors.add(new BridgeInterceptor(client.cookieJar()));
-    interceptors.add(new CacheInterceptor(client.internalCache()));
-    interceptors.add(new ConnectInterceptor(client));
-    if (!forWebSocket) {
-    interceptors.addAll(client.networkInterceptors());
-    }
-    interceptors.add(new CallServerInterceptor(forWebSocket));
-    Interceptor.Chain chain = new RealInterceptorChain(
-    interceptors, null, null, null, 0, originalRequest);
-    return chain.proceed(originalRequest);
+    static Builder newBuilder(TypeElement enclosingElement) {
+    TypeMirror typeMirror = enclosingElement.asType();
+
+    boolean isView = isSubtypeOfType(typeMirror, VIEW_TYPE);
+    boolean isActivity = isSubtypeOfType(typeMirror, ACTIVITY_TYPE);
+    boolean isDialog = isSubtypeOfType(typeMirror, DIALOG_TYPE);
+
+    TypeName targetType = TypeName.get(typeMirror);
+    if (targetType instanceof ParameterizedTypeName) {
+    targetType = ((ParameterizedTypeName) targetType).rawType;
     }
 
+    String packageName = getPackage(enclosingElement).getQualifiedName().toString();
+    String className = enclosingElement.getQualifiedName().toString().substring(
+    packageName.length() + 1).replace('.', '$');
+    ClassName bindingClassName = ClassName.get(packageName, className + "_ViewBinding");//5
 
-1）在配置 OkHttpClient 时设置的 interceptors；</br>
-2）负责失败重试以及重定向的 RetryAndFollowUpInterceptor；</br>
-3）负责把用户构造的请求转换为发送到服务器的请求、把服务器返回的响应转换为用户友好的响应的 BridgeInterceptor；</br>
-4）负责读取缓存直接返回、更新缓存的 CacheInterceptor；</br>
-5）负责和服务器建立连接的 ConnectInterceptor；</br>
-6）配置 OkHttpClient 时设置的 networkInterceptors；</br>
-7）负责向服务器发送请求数据、从服务器读取响应数据的 CallServerInterceptor。</br>
-OkHttp的这种拦截器链采用的是责任链模式，这样的好处是将请求的发送和处理分开，并且可以动态添加中间的处理方实现对请求的处理、短路等操作。</br>
-从上述源码得知，不管okhttp有多少拦截器最后都会走，如下方法：
-
-    Interceptor.Chain chain = new RealInterceptorChain(
-    interceptors, null, null, null, 0, originalRequest);
-    return chain.proceed(originalRequest);
-
-从方法名字基本可以猜到是干嘛的，调用 chain.proceed(originalRequest); 将request传递进来，从拦截器链里拿到返回结果。那么拦截器Interceptor是干嘛的，Chain是干嘛的呢？继续往下看RealInterceptorChain
-RealInterceptorChain类
-下面是RealInterceptorChain的定义，该类实现了Chain接口，在getResponseWithInterceptorChain调用时好几个参数都传的null。
-
-    public final class RealInterceptorChain implements Interceptor.Chain {
-    public RealInterceptorChain(List<Interceptor> interceptors, StreamAllocation streamAllocation,
-    HttpCodec httpCodec, RealConnection connection, int index, Request request) {
-    this.interceptors = interceptors;
-    this.connection = connection;
-    this.streamAllocation = streamAllocation;
-    this.httpCodec = httpCodec;
-    this.index = index;
-    this.request = request;
-    }
-    ......
-    @Override 
-    public Response proceed(Request request) throws IOException {
-    return proceed(request, streamAllocation, httpCodec, connection);
-    }
-    public Response proceed(Request request, StreamAllocation streamAllocation, HttpCodec httpCodec,
-    RealConnection connection) throws IOException {
-    if (index >= interceptors.size()) throw new AssertionError();
-    calls++;
-    ......
-    // Call the next interceptor in the chain.
-    RealInterceptorChain next = new RealInterceptorChain(
-    interceptors, streamAllocation, httpCodec, connection, index + 1, request);
-    Interceptor interceptor = interceptors.get(index);
-    Response response = interceptor.intercept(next);
-    ......
-    return response;
-    }
-    protected abstract void execute();
+    boolean isFinal = enclosingElement.getModifiers().contains(Modifier.FINAL);
+    return new Builder(targetType, bindingClassName, isFinal, isView, isActivity, isDialog);//6
     }
 
-主要看proceed方法，proceed方法中判断index（此时为0）是否大于或者等于client.interceptors(List )的大小。由于httpStream为null，所以首先创建next拦截器链，主需要把索引置为index+1即可；然后获取第一个拦截器，调用其intercept方法。
-Interceptor 代码如下：
+看注释5ClassName bindingClassName = ClassName.get(packageName, className + "_ViewBinding");此bindingClassName就是要即将生成的模板类名称。</br>
+继续看注释6此处new 了 Builder类，根据名字我们可以看出这是一个创建者模式，来看看Builder类的build方法，如下：
 
-    public interface Interceptor {
-    Response intercept(Chain chain) throws IOException;
-    interface Chain {
-    Request request();
-    Response proceed(Request request) throws IOException;
-    Connection connection();
+    BindingSet build() {
+    ImmutableList.Builder<ViewBinding> viewBindings = ImmutableList.builder();
+    for (ViewBinding.Builder builder : viewIdMap.values()) {
+    viewBindings.add(builder.build());
     }
+    return new BindingSet(targetTypeName, bindingClassName, isFinal, isView, isActivity, isDialog,
+    viewBindings.build(), collectionBindings.build(), resourceBindings.build(),
+    parentBinding);//7
     }
 
-## BridgeInterceptor
-BridgeInterceptor从用户的请求构建网络请求，然后提交给网络，最后从网络响应中提取出用户响应。从最上面的图可以看出，BridgeInterceptor实现了适配的功能。下面是其intercept方法：
+注释7里面可以看到实际上它是创建了一个BindingSet对象。而这个BindingSet对象里面存储着生成类的名称以及注解类名称等。
+接下来findAndParseTargets会把此BindingSet对象返回来，到ButterKnifeProcessor类的process方法， 重新贴一下代码:
 
-    public final class BridgeInterceptor implements Interceptor {
-    ......
-    @Override 
-    public Response intercept(Chain chain) throws IOException {
-    Request userRequest = chain.request();
-    Request.Builder requestBuilder = userRequest.newBuilder();
-    RequestBody body = userRequest.body();
-    //如果存在请求主体部分，那么需要添加Content-Type、Content-Length首部
-    if (body != null) {
-    MediaType contentType = body.contentType();
-    if (contentType != null) {
-    requestBuilder.header("Content-Type", contentType.toString());
-    }
-    long contentLength = body.contentLength();
-    if (contentLength != -1) {
-    requestBuilder.header("Content-Length", Long.toString(contentLength));
-    requestBuilder.removeHeader("Transfer-Encoding");
-    } else {
-    requestBuilder.header("Transfer-Encoding", "chunked");
-    requestBuilder.removeHeader("Content-Length");
+    @AutoService(Processor.class)
+    public final class ButterKnifeProcessor extends AbstractProcessor {
+    ...
+    @Override public boolean process(Set<? extends TypeElement> elements, RoundEnvironment env) {
+    Map<TypeElement, BindingSet> bindingMap = findAndParseTargets(env);//1
+    for (Map.Entry<TypeElement, BindingSet> entry : bindingMap.entrySet()) {
+    TypeElement typeElement = entry.getKey();
+    BindingSet binding = entry.getValue();//8
+    JavaFile javaFile = binding.brewJava(sdk, debuggable);
+    try {
+    javaFile.writeTo(filer);
+    } catch (IOException e) {
+    error(typeElement, "Unable to write binding for type %s: %s", typeElement, e.getMessage());
     }
     }
-    if (userRequest.header("Host") == null) {
-    requestBuilder.header("Host", hostHeader(userRequest.url(), false));
+    return false;
     }
-    if (userRequest.header("Connection") == null) {
-    requestBuilder.header("Connection", "Keep-Alive");
+    ...
     }
-    // If we add an "Accept-Encoding: gzip" header field we're responsible for also decompressing
-    // the transfer stream.
-    boolean transparentGzip = false;
-    if (userRequest.header("Accept-Encoding") == null && userRequest.header("Range") == null) {
-    transparentGzip = true;
-    requestBuilder.header("Accept-Encoding", "gzip");
+
+注释8获取到了上面生成的BindingSet对象。
+
+    JavaFile javaFile = binding.brewJava(sdk, debuggable);
+    javaFile.writeTo(filer);
+
+这两行代码为javapoet的范畴，其功能根据返回的binding对象配置信息生成我们需要用到的模板类代码，到此第一部分注解生成模板代码的源码就分析完了。
+
+    butterknife.bind()
+    来看butterknife工程下butterknife包下的ButterKnife.java类bind方法。
+
+    public static Unbinder bind(@NonNull Activity target) {
+    View sourceView = target.getWindow().getDecorView();
+    return createBinding(target, sourceView);
     }
-    List<Cookie> cookies = cookieJar.loadForRequest(userRequest.url());
-    if (!cookies.isEmpty()) {
-    requestBuilder.header("Cookie", cookieHeader(cookies));
+
+此方法有很多重载的方法， 这里我们只看绑定activity场景的重载方法。获取到activity中的decorview,将activity和decorview传入createBinding()方法。
+
+    private static Unbinder createBinding(@NonNull Object target, @NonNull View source) {
+    Class<?> targetClass = target.getClass();
+    if (debug) Log.d(TAG, "Looking up binding for " + targetClass.getName());
+    Constructor<? extends Unbinder> constructor = findBindingConstructorForClass(targetClass);//1
+
+    if (constructor == null) {
+    return Unbinder.EMPTY;
     }
-    if (userRequest.header("User-Agent") == null) {
-    requestBuilder.header("User-Agent", Version.userAgent());
+
+    //noinspection TryWithIdenticalCatches Resolves to API 19+ only type.
+    try {
+    return constructor.newInstance(target, source);//5
+    ...
     }
-    Response networkResponse = chain.proceed(requestBuilder.build());
-    HttpHeaders.receiveHeaders(cookieJar, userRequest.url(), networkResponse.headers());
-    Response.Builder responseBuilder = networkResponse.newBuilder()
-    .request(userRequest);
-    if (transparentGzip
-    && "gzip".equalsIgnoreCase(networkResponse.header("Content-Encoding"))
-    && HttpHeaders.hasBody(networkResponse)) {
-    GzipSource responseBody = new GzipSource(networkResponse.body().source());
-    Headers strippedHeaders = networkResponse.headers().newBuilder()
-    .removeAll("Content-Encoding")
-    .removeAll("Content-Length")
-    .build();
-    responseBuilder.headers(strippedHeaders);
-    responseBuilder.body(new RealResponseBody(strippedHeaders, Okio.buffer(responseBody)));
+
+注释1 进入findBindingConstructorForClass并传入了activity为参数，方法如下：
+
+    private static Constructor<? extends Unbinder> findBindingConstructorForClass(Class<?> cls) {
+    Constructor<? extends Unbinder> bindingCtor = BINDINGS.get(cls);//4
+    if (bindingCtor != null) {
+    if (debug) Log.d(TAG, "HIT: Cached in binding map.");
+    return bindingCtor;
     }
-    return responseBuilder.build();
+    String clsName = cls.getName();
+    if (clsName.startsWith("android.") || clsName.startsWith("java.")) {
+    if (debug) Log.d(TAG, "MISS: Reached framework class. Abandoning search.");
+    return null;
     }
-    /** Returns a 'Cookie' HTTP request header with all cookies, like {@code a=b; c=d}. */
-    private String cookieHeader(List<Cookie> cookies) {
-    StringBuilder cookieHeader = new StringBuilder();
-    for (int i = 0, size = cookies.size(); i < size; i++) {
-    if (i > 0) {
-    cookieHeader.append("; ");
+    try {
+    Class<?> bindingClass = cls.getClassLoader().loadClass(clsName + "_ViewBinding");//2
+    //noinspection unchecked
+    bindingCtor = (Constructor<? extends Unbinder>) bindingClass.getConstructor(cls, View.class);
+    if (debug) Log.d(TAG, "HIT: Loaded binding class and constructor.");
+    } catch (ClassNotFoundException e) {
+    if (debug) Log.d(TAG, "Not found. Trying superclass " + cls.getSuperclass().getName());
+    bindingCtor = findBindingConstructorForClass(cls.getSuperclass());
+    } catch (NoSuchMethodException e) {
+    throw new RuntimeException("Unable to find binding constructor for " + clsName, e);
     }
-    Cookie cookie = cookies.get(i);
-    cookieHeader.append(cookie.name()).append('=').append(cookie.value());
+    BINDINGS.put(cls, bindingCtor); //3
+    return bindingCtor;
     }
-    return cookieHeader.toString();
+
+先来看注释2处通过类加载器加载模板类,然后获取到它的构造方法，此处用到了反射会对性能有一定影响，为了优化性能看注解3会把构造方法加入到缓存map中，而注释4也就是方法开始的地方会对缓存做判断，如果有数据的话就直接返回了。createBinding ()方法 注释5处根据构造器创建xx_ViewBinding模板类对象，我们例子里面的模板类ming成为“HelloActivity_ViewBinding”。
+
+模板类代码分析</br>
+接下来看HelloActivity_ViewBinding类，代码如下：
+
+    public class HelloActivity_ViewBinding implements Unbinder {
+    private HelloActivity target;
+
+    @UiThread
+    public HelloActivity_ViewBinding(HelloActivity target) {
+    this(target, target.getWindow().getDecorView());
+    }
+
+    @UiThread
+    public HelloActivity_ViewBinding(HelloActivity target, View source) {
+    this.target = target;
+
+    target.mHelloTv = Utils.findRequiredViewAsType(source, R.id.tv_hello, "field 'mHelloTv'", TextView.class);//1
+    }
+
+    @Override
+    @CallSuper
+    public void unbind() {
+    HelloActivity target = this.target;
+    if (target == null) throw new IllegalStateException("Bindings already cleared.");
+    this.target = null;
+
+    target.mHelloTv = null;
     }
     }
 
-从上面的代码可以看出，首先获取原请求，然后在请求中添加头，比如Host、Connection、Accept-Encoding参数等，然后根据看是否需要填充Cookie，在对原始请求做出处理后，使用chain的procced方法得到响应，接下来对响应做处理得到用户响应，最后返回响应。接下来再看下一个拦截器ConnectInterceptor的处理。
-
-    public final class ConnectInterceptor implements Interceptor {
-    ......
-    @Override 
-    public Response intercept(Chain chain) throws IOException {
-    RealInterceptorChain realChain = (RealInterceptorChain) chain;
-    Request request = realChain.request();
-    StreamAllocation streamAllocation = realChain.streamAllocation();
-    // We need the network to satisfy this request. Possibly for validating a conditional GET.
-    boolean doExtensiveHealthChecks = !request.method().equals("GET");
-    HttpCodec httpCodec = streamAllocation.newStream(client, doExtensiveHealthChecks);
-    RealConnection connection = streamAllocation.connection();
-    return realChain.proceed(request, streamAllocation, httpCodec, connection);
-    }
+    接下来进入注释1 findRequiredViewAsType方法
+    public static <T> T findRequiredViewAsType(View source, @IdRes int id, String who,
+    Class<T> cls) {
+    View view = findRequiredView(source, id, who);//2
+    return castView(view, id, who, cls); //3
     }
 
-实际上建立连接就是创建了一个 HttpCodec 对象，它利用 Okio 对 Socket 的读写操作进行封装，Okio 以后有机会再进行分析，现在让我们对它们保持一个简单地认识：它对 java.io 和 java.nio 进行了封装，让我们更便捷高效的进行 IO 操作。
-CallServerInterceptor
-CallServerInterceptor是拦截器链中最后一个拦截器，负责将网络请求提交给服务器。它的intercept方法实现如下：
-
-    @Override 
-    public Response intercept(Chain chain) throws IOException {
-    RealInterceptorChain realChain = (RealInterceptorChain) chain;
-    HttpCodec httpCodec = realChain.httpStream();
-    StreamAllocation streamAllocation = realChain.streamAllocation();
-    RealConnection connection = (RealConnection) realChain.connection();
-    Request request = realChain.request();
-    long sentRequestMillis = System.currentTimeMillis();
-    httpCodec.writeRequestHeaders(request);
-    Response.Builder responseBuilder = null;
-    if (HttpMethod.permitsRequestBody(request.method()) && request.body() != null) {
-    // If there's a "Expect: 100-continue" header on the request, wait for a "HTTP/1.1 100
-    // Continue" response before transmitting the request body. If we don't get that, return what
-    // we did get (such as a 4xx response) without ever transmitting the request body.
-    if ("100-continue".equalsIgnoreCase(request.header("Expect"))) {
-    httpCodec.flushRequest();
-    responseBuilder = httpCodec.readResponseHeaders(true);
+    继续看注释2
+    public static View findRequiredView(View source, @IdRes int id, String who) {
+    View view = source.findViewById(id);
+    if (view != null) {
+    return view;
     }
-    if (responseBuilder == null) {
-    // Write the request body if the "Expect: 100-continue" expectation was met.
-    Sink requestBodyOut = httpCodec.createRequestBody(request, request.body().contentLength());
-    BufferedSink bufferedRequestBody = Okio.buffer(requestBodyOut);
-    request.body().writeTo(bufferedRequestBody);
-    bufferedRequestBody.close();
-    } else if (!connection.isMultiplexed()) {
-    // If the "Expect: 100-continue" expectation wasn't met, prevent the HTTP/1 connection from
-    // being reused. Otherwise we're still obligated to transmit the request body to leave the
-    // connection in a consistent state.
-    streamAllocation.noNewStreams();
-    }
-    }
-    httpCodec.finishRequest();
-    if (responseBuilder == null) {
-    responseBuilder = httpCodec.readResponseHeaders(false);
-    }
-    Response response = responseBuilder
-    .request(request)
-    .handshake(streamAllocation.connection().handshake())
-    .sentRequestAtMillis(sentRequestMillis)
-    .receivedResponseAtMillis(System.currentTimeMillis())
-    .build();
-    int code = response.code();
-    if (forWebSocket && code == 101) {
-    // Connection is upgrading, but we need to ensure interceptors see a non-null response body.
-    response = response.newBuilder()
-    .body(Util.EMPTY_RESPONSE)
-    .build();
-    } else {
-    response = response.newBuilder()
-    .body(httpCodec.openResponseBody(response))
-    .build();
-    }
-    if ("close".equalsIgnoreCase(response.request().header("Connection"))
-    || "close".equalsIgnoreCase(response.header("Connection"))) {
-    streamAllocation.noNewStreams();
-    }
-    if ((code == 204 || code == 205) && response.body().contentLength() > 0) {
-    throw new ProtocolException(
-    "HTTP " + code + " had non-zero Content-Length: " + response.body().contentLength());
-    }
-    return response;
+    String name = getResourceEntryName(source, id);
+    ...
     }
 
-从上面的代码中可以看出，首先获取HttpStream对象，然后调用writeRequestHeaders方法写入请求的头部，然后判断是否需要写入请求的body部分，最后调用finishRequest()方法将所有数据刷新给底层的Socket，接下来尝试调用readResponseHeaders()方法读取响应的头部，然后再调用openResponseBody()方法得到响应的body部分，最后返回响应。
-最后总结
-OkHttp的底层是通过Java的Socket发送HTTP请求与接受响应的(这也好理解，HTTP就是基于TCP协议的)，但是OkHttp实现了连接池的概念，即对于同一主机的多个请求，其实可以公用一个Socket连接，而不是每次发送完HTTP请求就关闭底层的Socket，这样就实现了连接池的概念。而OkHttp对Socket的读写操作使用的OkIo库进行了一层封装。
-
+此处看到了我们熟悉的View view = source.findViewById(id);。</br>
+注释3return castView(view, id, who, cls);  此处将view强制转型为cls类型。cls类型也就是下面的TextView.class。</br>
+target.mHelloTv = Utils.findRequiredViewAsType(source, R.id.tv_hello, "field 'mHelloTv'", TextView.class);此处的TextView.class。</br>
+将mHelloTv赋值给，target（也就是HelloActivity）。</br>
+至此我们的原理简单的分析完了。</br>
+哈哈，断断续续几个小时的时间又重新温习了一下butterknife原理。</br>
 
