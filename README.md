@@ -1,18 +1,15 @@
 ## 基本使用
 从使用方法出发，首先是怎么使用，其次是我们使用的功能在内部是如何实现的.建议大家下载 OkHttp 源码之后，跟着本文，过一遍源码。
 通过小栗子开启今天的源码分析：
-`
-OkHttpClient client = new OkHttpClient();
-
-String run(String url) throws IOException {
-Request request = new Request.Builder()
+    OkHttpClient client = new OkHttpClient();
+    String run(String url) throws IOException {
+    Request request = new Request.Builder()
 .url(url)
-.build();
+.build();   
+    Response response = client.newCall(request).execute();
+    return response.body().string();
+    }
 
-Response response = client.newCall(request).execute();
-return response.body().string();
-}
-`
 ## Request、Response、Call 基本概念
 上面的代码中涉及到几个常用的类：Request、Response和Call。下面分别介绍：
 Request
