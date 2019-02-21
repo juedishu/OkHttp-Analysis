@@ -134,10 +134,10 @@ RealCall实现了Call.Factory接口创建了一个RealCall的实例，而RealCal
     }
     }
 
-由以上源码得知：
-1） 检查这个 call 是否已经被执行了，每个 call 只能被执行一次，如果想要一个完全一样的 call，可以利用 call#clone 方法进行克隆。
-2）利用 client.dispatcher().enqueue(this) 来进行实际执行，dispatcher 是刚才看到的 OkHttpClient.Builder 的成员之一
-3）AsyncCall是RealCall的一个内部类并且继承NamedRunnable，那么首先看NamedRunnable类是什么样的，如下：
+由以上源码得知：</br>
+1） 检查这个 call 是否已经被执行了，每个 call 只能被执行一次，如果想要一个完全一样的 call，可以利用 call#clone 方法进行克隆。</br>
+2）利用 client.dispatcher().enqueue(this) 来进行实际执行，dispatcher 是刚才看到的 OkHttpClient.Builder 的成员之一</br>
+3）AsyncCall是RealCall的一个内部类并且继承NamedRunnable，那么首先看NamedRunnable类是什么样的，如下：</br>
 
     public abstract class NamedRunnable implements Runnable {
     ......
@@ -261,12 +261,10 @@ responseCallback.onResponse(RealCall.this, response);
     }
 
 从上述源码分析，如果当前还能执行一个并发请求，则加入 runningAsyncCalls ，立即执行，否则加入 readyAsyncCalls 队列。
-Dispatcher线程池总结
-1）调度线程池Disptcher实现了高并发，低阻塞的实现
-2）采用Deque作为缓存，先进先出的顺序执行
-3）任务在try/finally中调用了finished函数，控制任务队列的执行顺序，而不是采用锁，减少了编码复杂性提高性能
-这里是分析OkHttp源码，并不详细讲线程池原理，如对线程池不了解请参考如下链接
-点我，线程池原理，在文章性能优化最后有视频对线程池原理讲解
+Dispatcher线程池总结</br>
+1）调度线程池Disptcher实现了高并发，低阻塞的实现</br>
+2）采用Deque作为缓存，先进先出的顺序执行</br>
+3）任务在try/finally中调用了finished函数，控制任务队列的执行顺序，而不是采用锁，减少了编码复杂性提高性能</br>
 
     try {
     Response response = getResponseWithInterceptorChain();
