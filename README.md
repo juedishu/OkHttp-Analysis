@@ -134,6 +134,7 @@ client.dispatcher().enqueue(new AsyncCall(responseCallback));
 }
 }
 `
+
 由以上源码得知：
 1） 检查这个 call 是否已经被执行了，每个 call 只能被执行一次，如果想要一个完全一样的 call，可以利用 call#clone 方法进行克隆。
 2）利用 client.dispatcher().enqueue(this) 来进行实际执行，dispatcher 是刚才看到的 OkHttpClient.Builder 的成员之一
