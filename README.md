@@ -340,14 +340,14 @@ Dispatcher线程池总结</br>
     }
 
 
-1）在配置 OkHttpClient 时设置的 interceptors；
-2）负责失败重试以及重定向的 RetryAndFollowUpInterceptor；
-3）负责把用户构造的请求转换为发送到服务器的请求、把服务器返回的响应转换为用户友好的响应的 BridgeInterceptor；
-4）负责读取缓存直接返回、更新缓存的 CacheInterceptor；
-5）负责和服务器建立连接的 ConnectInterceptor；
-6）配置 OkHttpClient 时设置的 networkInterceptors；
-7）负责向服务器发送请求数据、从服务器读取响应数据的 CallServerInterceptor。
-OkHttp的这种拦截器链采用的是责任链模式，这样的好处是将请求的发送和处理分开，并且可以动态添加中间的处理方实现对请求的处理、短路等操作。
+1）在配置 OkHttpClient 时设置的 interceptors；</br>
+2）负责失败重试以及重定向的 RetryAndFollowUpInterceptor；</br>
+3）负责把用户构造的请求转换为发送到服务器的请求、把服务器返回的响应转换为用户友好的响应的 BridgeInterceptor；</br>
+4）负责读取缓存直接返回、更新缓存的 CacheInterceptor；</br>
+5）负责和服务器建立连接的 ConnectInterceptor；</br>
+6）配置 OkHttpClient 时设置的 networkInterceptors；</br>
+7）负责向服务器发送请求数据、从服务器读取响应数据的 CallServerInterceptor。</br>
+OkHttp的这种拦截器链采用的是责任链模式，这样的好处是将请求的发送和处理分开，并且可以动态添加中间的处理方实现对请求的处理、短路等操作。</br>
 从上述源码得知，不管okhttp有多少拦截器最后都会走，如下方法：
 
     Interceptor.Chain chain = new RealInterceptorChain(
